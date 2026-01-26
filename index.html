@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KMC后勤物资 (Local Restore)</title>
+    <title>KMC后勤物资 (Cloud Sync v2.0)</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -118,7 +118,7 @@
         <div style="background: var(--panel); padding:30px; width:300px; border-radius:12px; text-align:center;">
             <div style="font-size:36px; margin-bottom:12px;"><i class="fas fa-cubes" style="color:var(--text)"></i></div>
             <h2 style="margin:0 0 5px 0; color:var(--text)">KMC后勤物资</h2>
-            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Manual Restore)</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Sync V2.0)</p>
             <div style="text-align:left; margin-bottom:15px;">
                 <label class="label">Role (身份)</label>
                 <select id="login-role" class="select" onchange="app.roleSwitch(this.value)">
@@ -137,7 +137,7 @@
     <header class="header">
         <div class="brand" onclick="app.triggerAdmin()" title="Tap 7 times for God Mode"><i class="fas fa-cube"></i> KMC <span id="user-badge" style="font-size:10px; background:#1f6feb; color:white; padding:2px 8px; border-radius:4px; font-weight:700;"></span></div>
         <div class="header-actions">
-            <div class="icon-btn sync" id="cloud-btn" onclick="app.pushToCloud()" title="Sync Cloud"><i class="fas fa-cloud"></i></div>
+            <div class="icon-btn sync" id="cloud-btn" onclick="app.fetchFromCloud()" title="Pull Latest Data (拉取最新)"><i class="fas fa-cloud"></i></div>
             <div class="icon-btn exit" onclick="location.reload()"><i class="fas fa-sign-out-alt"></i></div>
         </div>
     </header>
@@ -482,13 +482,11 @@
     <datalist id="dl-handlers"></datalist><datalist id="dl-receivers"></datalist>
     <div id="print-area"></div>
     <script>
-        // --- Supabase Config (Keep for backup, but focus is local) ---
         const supabaseUrl = 'https://fhlrdoekuukhbuqrzltp.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZobHJkb2VrdXVraGJ1cXJ6bHRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwOTg3MDgsImV4cCI6MjA4MzY3NDcwOH0.FgJ2wf5MzRBrcispP22bRFyKE4oOYpWdmnAeID-GXoc';
         const _client = supabase.createClient(supabaseUrl, supabaseKey);
 
         const app = {
-            // Default Initial State (Empty) - You will populate this via RESTORE
             data: { 
                 list: [], 
                 history: [], 
@@ -572,35 +570,70 @@
                 if (type === 'out') this.checkStock(name);
             },
 
+            // --- CLOUD SYNC LOGIC FIXED ---
+            fetchFromCloud: async function() {
+                const btn = document.getElementById('cloud-btn');
+                if(btn) btn.className = "icon-btn sync spinning"; 
+
+                try {
+                    const { data, error } = await _client.from('kmc_core').select('content').eq('id', 1).single();
+                    if (error) throw error;
+
+                    if(data && data.content) {
+                        console.log("Cloud Data Received");
+                        this.data = data.content; 
+                        this.saveToLocal();       
+                        this.checkSettings();
+                        this.refreshDatalists();
+                        this.applyRules();
+                        
+                        // If report view is open, refresh it
+                        if(document.getElementById('modal-report-center').style.display === 'flex') {
+                            this.renderReport();
+                        }
+                        
+                        if(btn) btn.className = "icon-btn sync success";
+                        setTimeout(() => { if(btn) btn.className = "icon-btn sync"; }, 1000);
+                        return true; 
+                    }
+                } catch(e) {
+                    console.error("Cloud Fetch Error:", e);
+                    if(btn) btn.className = "icon-btn exit"; 
+                    return false; 
+                }
+            },
+
             init: async function() {
                 const d = new Date().toISOString().split('T')[0];
-                document.getElementById('rep-start').value = d;
-                document.getElementById('rep-end').value = d;
-                document.getElementById('adm-log-start').value = d;
-                document.getElementById('adm-log-end').value = d;
-                
-                // Try load local first
-                const local = localStorage.getItem('kmc_v67');
-                if(local) {
-                    try { 
-                        this.data = JSON.parse(local); 
-                        console.log("Loaded Local Data");
-                    } catch(e) {}
-                } else {
-                    // Try fetch cloud if no local
-                    try {
-                         const { data, error } = await _client.from('kmc_core').select('content').eq('id', 1).single();
-                         if(data && data.content) {
-                             this.data = data.content;
-                             this.saveToLocal();
-                         }
-                    } catch(e) {}
+                ['rep-start', 'rep-end', 'adm-log-start', 'adm-log-end'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if(el) el.value = d;
+                });
+
+                // 1. Try Cloud First
+                const cloudSuccess = await this.fetchFromCloud();
+
+                // 2. If Cloud Fails, Use Local
+                if (!cloudSuccess) {
+                    console.log("Cloud unavailable, falling back to Local Storage.");
+                    const local = localStorage.getItem('kmc_v67');
+                    if(local) {
+                        try { 
+                            this.data = JSON.parse(local); 
+                        } catch(e) { console.error("Local corrupt"); }
+                    }
                 }
 
                 this.checkSettings();
                 this.refreshDatalists();
                 this.applyRules(); 
-                window.addEventListener('storage', (e) => { if (e.key === 'kmc_v67') { this.data=JSON.parse(e.newValue); } });
+
+                window.addEventListener('storage', (e) => { 
+                    if (e.key === 'kmc_v67') { 
+                        this.data = JSON.parse(e.newValue); 
+                        this.refreshDatalists(); 
+                    } 
+                });
                 document.addEventListener('click', (e) => {
                     if (!e.target.closest('.input-wrapper')) document.querySelectorAll('.suggestion-list').forEach(el => el.style.display = 'none');
                 });
@@ -611,7 +644,6 @@
                 if(!this.data.settings.constraints) {
                     this.data.settings.constraints = { in_handler:true, in_source:true, out_dept:true, out_receiver:true, out_usage:true };
                 }
-                // Defaults if missing
                 if(!this.data.settings.godPass) this.data.settings.godPass = 'sqx1987923';
                 if(!this.data.settings.adminPass) this.data.settings.adminPass = 'admin123';
                 if(!this.data.settings.keeperPass) this.data.settings.keeperPass = '666666'; 
@@ -627,9 +659,12 @@
                 if(btn) btn.className = "icon-btn sync spinning";
                 
                 try {
-                    await _client.from('kmc_core').upsert({ id: 1, content: this.data });
+                    const { error } = await _client.from('kmc_core').upsert({ id: 1, content: this.data });
+                    if(error) throw error;
+                    
                     if(btn) btn.className = "icon-btn sync success"; 
-                    if(btn) setTimeout(() => btn.className = "icon-btn sync", 1000); 
+                    setTimeout(() => { if(btn) btn.className = "icon-btn sync"; }, 1000); 
+                    
                     const t = document.getElementById('toast-msg');
                     if(t) { t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
                 } catch(e) {
@@ -711,7 +746,6 @@
                 }
             },
 
-            // --- RESTORE FUNCTION ---
             restoreData: function(el) {
                 const f = el.files[0];
                 if(f) {
@@ -723,7 +757,7 @@
                                 this.data = parsed;
                                 this.checkSettings(); 
                                 this.saveToLocal();
-                                await this.pushToCloud(); // Sync restored data
+                                await this.pushToCloud(); 
                                 alert("Data Restored Successfully!");
                                 location.reload();
                             }
@@ -744,7 +778,6 @@
                 alert("Saved to Cloud!");
             },
 
-            // Generic Manager for Locs/Units/Depts
             renderManager: function(type, dataArr) {
                 const tableId = `adm-${type}-list`;
                 document.getElementById(tableId).innerHTML = dataArr.map((val, i) => `
@@ -952,8 +985,6 @@
                 if(modal) {
                     modal.style.display = 'flex'; 
                     this.renderReport();
-                } else {
-                    alert("Error: Report modal not found.");
                 }
             },
             closeReportCenter: function() { document.getElementById('modal-report-center').style.display = 'none'; },
