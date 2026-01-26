@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KMC后勤物资 (Cloud Sync v2.0)</title>
+    <title>KMC后勤物资 (Smart Sync v3.0)</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -118,7 +118,7 @@
         <div style="background: var(--panel); padding:30px; width:300px; border-radius:12px; text-align:center;">
             <div style="font-size:36px; margin-bottom:12px;"><i class="fas fa-cubes" style="color:var(--text)"></i></div>
             <h2 style="margin:0 0 5px 0; color:var(--text)">KMC后勤物资</h2>
-            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Sync V2.0)</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Smart Sync V3.0)</p>
             <div style="text-align:left; margin-bottom:15px;">
                 <label class="label">Role (身份)</label>
                 <select id="login-role" class="select" onchange="app.roleSwitch(this.value)">
@@ -137,7 +137,7 @@
     <header class="header">
         <div class="brand" onclick="app.triggerAdmin()" title="Tap 7 times for God Mode"><i class="fas fa-cube"></i> KMC <span id="user-badge" style="font-size:10px; background:#1f6feb; color:white; padding:2px 8px; border-radius:4px; font-weight:700;"></span></div>
         <div class="header-actions">
-            <div class="icon-btn sync" id="cloud-btn" onclick="app.fetchFromCloud()" title="Pull Latest Data (拉取最新)"><i class="fas fa-cloud"></i></div>
+            <div class="icon-btn sync" id="cloud-btn" onclick="app.smartSync()" title="Smart Sync (智能同步)"><i class="fas fa-cloud"></i></div>
             <div class="icon-btn exit" onclick="location.reload()"><i class="fas fa-sign-out-alt"></i></div>
         </div>
     </header>
@@ -425,6 +425,12 @@
             <div id="adm-area-sys" class="panel-box" style="display:none;">
                 <div class="admin-scroll-content">
                     <div style="margin-bottom:20px; background:#21262d; padding:15px; border-radius:6px;">
+                        <div style="font-weight:700; margin-bottom:10px; color:#58a6ff">Force Sync (强制同步)</div>
+                        <p style="font-size:11px; color:#8b949e; margin-bottom:10px;">Use this ONLY if Cloud data is wrong or outdated. (仅当云端数据错误时使用)</p>
+                        <button class="btn btn-primary" onclick="app.forcePushToCloud()">Force Push Local to Cloud (强制上传本地数据)</button>
+                    </div>
+
+                    <div style="margin-bottom:20px; background:#21262d; padding:15px; border-radius:6px;">
                         <div style="font-weight:700; margin-bottom:10px;">Data Backup (数据备份)</div>
                         <button class="btn btn-in" onclick="app.backupData()">Backup (备份)</button>
                         <input type="file" id="file-restore" hidden onchange="app.restoreData(this)">
@@ -502,10 +508,7 @@
             },
             temp: { cart: { in: [], out: [] }, signType: null, sig: null, curTab: 'in', admTab: 'stock', adminClicks: 0, adminTimer: null },
             currentUser: { role: null, token: null },
-            
-            dictionary: {
-                "Lite Beer": "Lite啤酒", "Lite啤酒": "Lite Beer", "Fans": "电风扇", "电风扇": "Fans"
-            },
+            dictionary: { "Lite Beer": "Lite啤酒", "Lite啤酒": "Lite Beer", "Fans": "电风扇", "电风扇": "Fans" },
 
             // --- REAL ONLINE TRANSLATION ---
             translateInput: async function(id) {
@@ -570,37 +573,12 @@
                 if (type === 'out') this.checkStock(name);
             },
 
-            // --- CLOUD SYNC LOGIC FIXED ---
-            fetchFromCloud: async function() {
-                const btn = document.getElementById('cloud-btn');
-                if(btn) btn.className = "icon-btn sync spinning"; 
-
-                try {
-                    const { data, error } = await _client.from('kmc_core').select('content').eq('id', 1).single();
-                    if (error) throw error;
-
-                    if(data && data.content) {
-                        console.log("Cloud Data Received");
-                        this.data = data.content; 
-                        this.saveToLocal();       
-                        this.checkSettings();
-                        this.refreshDatalists();
-                        this.applyRules();
-                        
-                        // If report view is open, refresh it
-                        if(document.getElementById('modal-report-center').style.display === 'flex') {
-                            this.renderReport();
-                        }
-                        
-                        if(btn) btn.className = "icon-btn sync success";
-                        setTimeout(() => { if(btn) btn.className = "icon-btn sync"; }, 1000);
-                        return true; 
-                    }
-                } catch(e) {
-                    console.error("Cloud Fetch Error:", e);
-                    if(btn) btn.className = "icon-btn exit"; 
-                    return false; 
-                }
+            // --- SMART SYNC LOGIC (V3.0) ---
+            getLastModified: function(dataObj) {
+                // Return timestamp of latest history item, or 0 if empty
+                if (!dataObj || !dataObj.history || dataObj.history.length === 0) return 0;
+                // Since history isunshifted, [0] is latest
+                return dataObj.history[0].ts || 0;
             },
 
             init: async function() {
@@ -610,20 +588,22 @@
                     if(el) el.value = d;
                 });
 
-                // 1. Try Cloud First
-                const cloudSuccess = await this.fetchFromCloud();
-
-                // 2. If Cloud Fails, Use Local
-                if (!cloudSuccess) {
-                    console.log("Cloud unavailable, falling back to Local Storage.");
-                    const local = localStorage.getItem('kmc_v67');
-                    if(local) {
-                        try { 
-                            this.data = JSON.parse(local); 
-                        } catch(e) { console.error("Local corrupt"); }
-                    }
+                // 1. Load Local FIRST (To show something immediately and preserve it)
+                let localData = null;
+                const localStr = localStorage.getItem('kmc_v67');
+                if(localStr) {
+                    try { 
+                        localData = JSON.parse(localStr); 
+                        this.data = localData; // Render Local immediately
+                        console.log("Loaded Local Data");
+                        this.refreshDatalists();
+                    } catch(e) { console.error("Local corrupt"); }
                 }
 
+                // 2. Fetch Cloud and COMPARE
+                await this.smartSync(localData);
+
+                // 3. Finalize setup
                 this.checkSettings();
                 this.refreshDatalists();
                 this.applyRules(); 
@@ -637,6 +617,67 @@
                 document.addEventListener('click', (e) => {
                     if (!e.target.closest('.input-wrapper')) document.querySelectorAll('.suggestion-list').forEach(el => el.style.display = 'none');
                 });
+            },
+
+            smartSync: async function(currentLocalData) {
+                const btn = document.getElementById('cloud-btn');
+                if(btn) btn.className = "icon-btn sync spinning"; 
+                
+                // Use passed local data or current state
+                const local = currentLocalData || this.data;
+
+                try {
+                    const { data: cloudRow, error } = await _client.from('kmc_core').select('content').eq('id', 1).single();
+                    
+                    if (error) throw error;
+                    
+                    let cloud = null;
+                    if(cloudRow && cloudRow.content) cloud = cloudRow.content;
+
+                    if (!cloud) {
+                        // Cloud empty, push local
+                        console.log("Cloud empty, pushing local...");
+                        await this.pushToCloud(true);
+                    } else if (!local || local.history.length === 0) {
+                        // Local empty, use cloud
+                        console.log("Local empty, using cloud...");
+                        this.data = cloud;
+                        this.saveToLocal();
+                    } else {
+                        // BOTH EXIST - COMPARE TIMESTAMPS
+                        const localTS = this.getLastModified(local);
+                        const cloudTS = this.getLastModified(cloud);
+                        
+                        console.log(`Sync Check - Local: ${localTS}, Cloud: ${cloudTS}`);
+
+                        if (localTS > cloudTS) {
+                            console.log("Local is newer. Pushing to Cloud.");
+                            this.data = local; // Ensure we use local
+                            await this.pushToCloud(true); // Force push
+                            alert("Sync: Local changes uploaded to Cloud.");
+                        } else if (cloudTS > localTS) {
+                            console.log("Cloud is newer. Downloading.");
+                            this.data = cloud;
+                            this.saveToLocal();
+                            alert("Sync: Updated from Cloud.");
+                        } else {
+                            console.log("Sync: Already up to date.");
+                        }
+                    }
+                    
+                    if(btn) btn.className = "icon-btn sync success";
+                    setTimeout(() => { if(btn) btn.className = "icon-btn sync"; }, 1000);
+                    
+                    // Refresh View
+                    if(document.getElementById('modal-report-center').style.display === 'flex') {
+                        this.renderReport();
+                    }
+                    this.refreshDatalists();
+
+                } catch(e) {
+                    console.error("Smart Sync Error:", e);
+                    if(btn) btn.className = "icon-btn exit"; 
+                }
             },
             
             checkSettings: function() {
@@ -653,24 +694,35 @@
                 try { localStorage.setItem('kmc_v67', JSON.stringify(this.data)); } catch(e) { alert("Storage Full!"); }
             },
 
-            pushToCloud: async function() { 
+            // internal push function
+            pushToCloud: async function(silent = false) { 
                 this.saveToLocal();
                 const btn = document.getElementById('cloud-btn');
-                if(btn) btn.className = "icon-btn sync spinning";
+                if(!silent && btn) btn.className = "icon-btn sync spinning";
                 
                 try {
                     const { error } = await _client.from('kmc_core').upsert({ id: 1, content: this.data });
                     if(error) throw error;
                     
-                    if(btn) btn.className = "icon-btn sync success"; 
-                    setTimeout(() => { if(btn) btn.className = "icon-btn sync"; }, 1000); 
+                    if(!silent && btn) btn.className = "icon-btn sync success"; 
+                    if(!silent && btn) setTimeout(() => btn.className = "icon-btn sync", 1000); 
                     
-                    const t = document.getElementById('toast-msg');
-                    if(t) { t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
+                    if(!silent) {
+                        const t = document.getElementById('toast-msg');
+                        if(t) { t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
+                    }
                 } catch(e) {
                     console.error(e);
-                    if(btn) btn.className = "icon-btn exit";
-                    alert("Network Error - Saved Locally");
+                    if(!silent && btn) btn.className = "icon-btn exit";
+                    if(!silent) alert("Network Error - Saved Locally");
+                }
+            },
+
+            // Admin Force Push
+            forcePushToCloud: async function() {
+                if(confirm("DANGER: This will overwrite Cloud data with THIS device's data. Continue?")) {
+                    await this.pushToCloud(false);
+                    alert("Force Push Complete.");
                 }
             },
 
