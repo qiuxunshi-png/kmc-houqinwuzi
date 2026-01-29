@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KMC后勤物资 (Smart Sync v3.0)</title>
+    <title>KMC后勤物资 (Smart Sync v3.1 Stable)</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -118,7 +118,7 @@
         <div style="background: var(--panel); padding:30px; width:300px; border-radius:12px; text-align:center;">
             <div style="font-size:36px; margin-bottom:12px;"><i class="fas fa-cubes" style="color:var(--text)"></i></div>
             <h2 style="margin:0 0 5px 0; color:var(--text)">KMC后勤物资</h2>
-            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Smart Sync V3.0)</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Smart Sync V3.1)</p>
             <div style="text-align:left; margin-bottom:15px;">
                 <label class="label">Role (身份)</label>
                 <select id="login-role" class="select" onchange="app.roleSwitch(this.value)">
@@ -488,7 +488,9 @@
     <datalist id="dl-handlers"></datalist><datalist id="dl-receivers"></datalist>
     <div id="print-area"></div>
     <script>
+        // 配置区域
         const supabaseUrl = 'https://fhlrdoekuukhbuqrzltp.supabase.co';
+        // ⚠️ 注意：在生产环境中建议配置 RLS 策略以增强安全性
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZobHJkb2VrdXVraGJ1cXJ6bHRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwOTg3MDgsImV4cCI6MjA4MzY3NDcwOH0.FgJ2wf5MzRBrcispP22bRFyKE4oOYpWdmnAeID-GXoc';
         const _client = supabase.createClient(supabaseUrl, supabaseKey);
 
@@ -506,19 +508,35 @@
                     constraints: { in_handler:true, in_source:true, out_dept:true, out_receiver:true, out_usage:true } 
                 } 
             },
-            temp: { cart: { in: [], out: [] }, signType: null, sig: null, curTab: 'in', admTab: 'stock', adminClicks: 0, adminTimer: null },
+            temp: { cart: { in: [], out: [] }, signType: null, sig: null, curTab: 'in', admTab: 'stock', adminClicks: 0, adminTimer: null, debounceTimer: null },
             currentUser: { role: null, token: null },
             dictionary: { "Lite Beer": "Lite啤酒", "Lite啤酒": "Lite Beer", "Fans": "电风扇", "电风扇": "Fans" },
 
-            // --- REAL ONLINE TRANSLATION ---
-            translateInput: async function(id) {
+            // --- UI 反馈工具 ---
+            showToast: function(msg, type = 'success') {
+                const t = document.getElementById('toast-msg');
+                t.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${msg}`;
+                t.style.background = type === 'success' ? '#238636' : '#da3633';
+                t.classList.add('show');
+                setTimeout(() => t.classList.remove('show'), 3000);
+            },
+
+            // --- 翻译功能优化 (防抖) ---
+            translateInput: function(id) {
+                clearTimeout(this.temp.debounceTimer);
                 const el = document.getElementById(id);
                 const val = el.value.trim();
                 if (!val) return;
-                
-                if (val.includes('(') && val.includes(')')) {
-                    if(!confirm("Item seems already translated. Translate again?")) return;
-                }
+
+                // 延迟 600ms 执行，防止 API 滥用
+                this.temp.debounceTimer = setTimeout(async () => {
+                    this._performTranslate(id, val);
+                }, 600);
+            },
+
+            _performTranslate: async function(id, val) {
+                const el = document.getElementById(id);
+                if (val.includes('(') && val.includes(')')) return; 
 
                 const btn = el.nextElementSibling; 
                 const icon = btn ? btn.querySelector('i') : null;
@@ -533,16 +551,12 @@
                     if(data.responseData && data.responseData.translatedText) {
                         const translation = data.responseData.translatedText;
                         el.value = `${val} (${translation})`;
-                        if (id.includes('name')) {
-                            if(id.startsWith('in')) this.fillItemInfo('in', el.value);
-                            if(id.startsWith('out')) this.checkStock(el.value);
-                        }
-                    } else {
-                        throw new Error("Translation API returned no data");
+                        // 触发后续联动逻辑
+                        if (id.startsWith('in')) this.fillItemInfo('in', el.value);
+                        if (id.startsWith('out')) this.checkStock(el.value);
                     }
                 } catch (e) {
-                    console.error(e);
-                    alert("Online Translation Failed. Using basic fallback.");
+                    console.warn("Translation Limit, using dictionary");
                     let trans = this.dictionary[val] || ( /[\u4e00-\u9fa5]/.test(val) ? "Trans_EN" : "Trans_CN" );
                     el.value = `${val} (${trans})`;
                 } finally {
@@ -573,11 +587,8 @@
                 if (type === 'out') this.checkStock(name);
             },
 
-            // --- SMART SYNC LOGIC (V3.0) ---
             getLastModified: function(dataObj) {
-                // Return timestamp of latest history item, or 0 if empty
                 if (!dataObj || !dataObj.history || dataObj.history.length === 0) return 0;
-                // Since history isunshifted, [0] is latest
                 return dataObj.history[0].ts || 0;
             },
 
@@ -588,22 +599,22 @@
                     if(el) el.value = d;
                 });
 
-                // 1. Load Local FIRST (To show something immediately and preserve it)
+                // 1. 优先加载本地数据 (LocalStorage) - 保持键名为 kmc_v67
                 let localData = null;
                 const localStr = localStorage.getItem('kmc_v67');
                 if(localStr) {
                     try { 
                         localData = JSON.parse(localStr); 
-                        this.data = localData; // Render Local immediately
+                        this.data = localData; 
                         console.log("Loaded Local Data");
                         this.refreshDatalists();
                     } catch(e) { console.error("Local corrupt"); }
                 }
 
-                // 2. Fetch Cloud and COMPARE
+                // 2. 执行智能同步 (Smart Sync)
                 await this.smartSync(localData);
 
-                // 3. Finalize setup
+                // 3. 初始化设置
                 this.checkSettings();
                 this.refreshDatalists();
                 this.applyRules(); 
@@ -619,32 +630,31 @@
                 });
             },
 
+            // --- 核心逻辑优化：智能同步 (带冲突检测) ---
             smartSync: async function(currentLocalData) {
                 const btn = document.getElementById('cloud-btn');
                 if(btn) btn.className = "icon-btn sync spinning"; 
                 
-                // Use passed local data or current state
                 const local = currentLocalData || this.data;
 
                 try {
-                    const { data: cloudRow, error } = await _client.from('kmc_core').select('content').eq('id', 1).single();
+                    // 使用 maybeSingle() 避免空数据库报错
+                    let { data: cloudRow, error } = await _client.from('kmc_core').select('content').eq('id', 1).maybeSingle();
                     
-                    if (error) throw error;
+                    if (error && error.code !== 'PGRST116') throw error;
                     
-                    let cloud = null;
-                    if(cloudRow && cloudRow.content) cloud = cloudRow.content;
+                    let cloud = (cloudRow && cloudRow.content) ? cloudRow.content : null;
 
                     if (!cloud) {
-                        // Cloud empty, push local
                         console.log("Cloud empty, pushing local...");
                         await this.pushToCloud(true);
-                    } else if (!local || local.history.length === 0) {
-                        // Local empty, use cloud
+                    } else if (!local || !local.history || local.history.length === 0) {
                         console.log("Local empty, using cloud...");
                         this.data = cloud;
                         this.saveToLocal();
+                        this.showToast("Data pulled from Cloud", "success");
                     } else {
-                        // BOTH EXIST - COMPARE TIMESTAMPS
+                        // 冲突检测逻辑
                         const localTS = this.getLastModified(local);
                         const cloudTS = this.getLastModified(cloud);
                         
@@ -652,14 +662,22 @@
 
                         if (localTS > cloudTS) {
                             console.log("Local is newer. Pushing to Cloud.");
-                            this.data = local; // Ensure we use local
-                            await this.pushToCloud(true); // Force push
-                            alert("Sync: Local changes uploaded to Cloud.");
+                            this.data = local;
+                            await this.pushToCloud(true);
+                            this.showToast("Local changes uploaded");
                         } else if (cloudTS > localTS) {
-                            console.log("Cloud is newer. Downloading.");
-                            this.data = cloud;
-                            this.saveToLocal();
-                            alert("Sync: Updated from Cloud.");
+                            // ⚠️ 冲突停止执行逻辑：询问用户
+                            const dateStr = new Date(cloudTS).toLocaleString();
+                            if(confirm(`⚠️ Cloud data is newer (${dateStr}).\nUpdate local data from Cloud?\n(Cancel to keep local data only)`)) {
+                                console.log("User confirmed cloud update.");
+                                this.data = cloud;
+                                this.saveToLocal();
+                                this.showToast("Updated from Cloud");
+                            } else {
+                                console.log("User cancelled sync. Keeping local data.");
+                                this.showToast("Sync Cancelled (Local Kept)", "error");
+                                // 停止自动覆盖，等待用户手动处理
+                            }
                         } else {
                             console.log("Sync: Already up to date.");
                         }
@@ -668,7 +686,6 @@
                     if(btn) btn.className = "icon-btn sync success";
                     setTimeout(() => { if(btn) btn.className = "icon-btn sync"; }, 1000);
                     
-                    // Refresh View
                     if(document.getElementById('modal-report-center').style.display === 'flex') {
                         this.renderReport();
                     }
@@ -677,6 +694,7 @@
                 } catch(e) {
                     console.error("Smart Sync Error:", e);
                     if(btn) btn.className = "icon-btn exit"; 
+                    this.showToast("Sync Error: Check Console", "error");
                 }
             },
             
@@ -694,7 +712,6 @@
                 try { localStorage.setItem('kmc_v67', JSON.stringify(this.data)); } catch(e) { alert("Storage Full!"); }
             },
 
-            // internal push function
             pushToCloud: async function(silent = false) { 
                 this.saveToLocal();
                 const btn = document.getElementById('cloud-btn');
@@ -707,22 +724,17 @@
                     if(!silent && btn) btn.className = "icon-btn sync success"; 
                     if(!silent && btn) setTimeout(() => btn.className = "icon-btn sync", 1000); 
                     
-                    if(!silent) {
-                        const t = document.getElementById('toast-msg');
-                        if(t) { t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
-                    }
+                    if(!silent) this.showToast("Saved to Cloud!");
                 } catch(e) {
                     console.error(e);
                     if(!silent && btn) btn.className = "icon-btn exit";
-                    if(!silent) alert("Network Error - Saved Locally");
+                    if(!silent) this.showToast("Network Error - Saved Locally", "error");
                 }
             },
 
-            // Admin Force Push
             forcePushToCloud: async function() {
                 if(confirm("DANGER: This will overwrite Cloud data with THIS device's data. Continue?")) {
                     await this.pushToCloud(false);
-                    alert("Force Push Complete.");
                 }
             },
 
@@ -736,11 +748,13 @@
                 let tableHTML = document.getElementById('rep-table').outerHTML;
                 el.innerHTML = `<h2 style="text-align:center;">${title}</h2><div class="meta">Export Date (导出时间): ${new Date().toLocaleString()}</div>${tableHTML}`;
                 
+                this.showToast("Generating PDF...");
                 setTimeout(() => {
                     html2canvas(el, {scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0}).then(c => {
                         const p = new window.jspdf.jsPDF('p', 'mm', 'a4');
                         p.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 10, 10, 190, (c.height * 190) / c.width); 
                         p.save('KMC_Report.pdf'); el.innerHTML = '';
+                        this.showToast("PDF Downloaded");
                     }); 
                 }, 200); 
             },
@@ -751,7 +765,7 @@
                 if(this.temp.adminClicks === 7) {
                     this.temp.adminClicks = 0;
                     if(prompt("Admin Password (God Mode):") === this.data.settings.godPass) this.openAdminUltimate();
-                    else alert("Access Denied");
+                    else this.showToast("Access Denied", "error");
                 }
                 this.temp.adminTimer = setTimeout(() => this.temp.adminClicks = 0, 2000);
             },
@@ -827,7 +841,6 @@
             
             adminManualSave: function() {
                 this.pushToCloud();
-                alert("Saved to Cloud!");
             },
 
             renderManager: function(type, dataArr) {
@@ -940,7 +953,7 @@
                 if (r === 'admin') targetPass = this.data.settings.adminPass;
                 else targetPass = this.data.settings.keeperPass;
 
-                if (p !== targetPass) return alert('Wrong Password');
+                if (p !== targetPass) return this.showToast('Wrong Password', 'error');
 
                 if (r === 'admin') {
                     document.getElementById('card-rules').style.display='block';
@@ -968,7 +981,7 @@
                 if(role === 'admin') this.data.settings.adminPass = val;
                 if(role === 'god') this.data.settings.godPass = val;
                 this.pushToCloud();
-                alert("Password Updated!");
+                this.showToast("Password Updated!");
                 document.getElementById(id).value = '';
             },
 
@@ -976,18 +989,18 @@
                 const name = document.getElementById(type+'-name').value;
                 const qty = parseInt(document.getElementById(type+'-qty').value); 
                 const unit = document.getElementById(type+'-unit').value;
-                if(!name || !qty || qty <= 0) return alert("Fill Name & Qty");
+                if(!name || !qty || qty <= 0) return this.showToast("Fill Name & Qty", "error");
                 
                 if(type === 'in') {
                     const loc = document.getElementById('in-loc').value;
-                    if(!loc) return alert("Loc required");
+                    if(!loc) return this.showToast("Loc required", "error");
                     this.temp.cart.in.push({ name, qty, unit, loc });
                     document.getElementById('in-name').value='';document.getElementById('in-qty').value='';
                 } else {
                     const item = this.data.list.find(i=>i.name===name);
-                    if(!item) return alert("Item not found");
+                    if(!item) return this.showToast("Item not found", "error");
                     const alreadyInCart = this.temp.cart.out.filter(c => c.name === name).reduce((sum, c) => sum + c.qty, 0);
-                    if(item.qty < (qty + alreadyInCart)) return alert("Insufficient Stock");
+                    if(item.qty < (qty + alreadyInCart)) return this.showToast("Insufficient Stock", "error");
                     this.temp.cart.out.push({ name, qty, unit: item.unit });
                     document.getElementById('out-name').value='';document.getElementById('out-qty').value='';
                 }
@@ -1008,7 +1021,7 @@
                 
                 if(type === 'in') {
                     const h = document.getElementById('in-handler').value, s = document.getElementById('in-source').value;
-                    if(this.data.settings.constraints.in_handler && !h) return alert("Handler required");
+                    if(this.data.settings.constraints.in_handler && !h) return this.showToast("Handler required", "error");
                     list.forEach(i => {
                         let stock = this.data.list.find(x=>x.name===i.name);
                         if(stock) { stock.qty += i.qty; if(stock.loc!==i.loc && !stock.loc.includes(i.loc)) stock.loc+=", "+i.loc; } 
@@ -1017,7 +1030,7 @@
                     });
                 } else {
                     const d = document.getElementById('out-dept').value, r = document.getElementById('out-receiver').value, u = document.getElementById('out-usage').value;
-                    if(this.data.settings.constraints.out_dept && !d) return alert("Dept required");
+                    if(this.data.settings.constraints.out_dept && !d) return this.showToast("Dept required", "error");
                     list.forEach(i => {
                         let stock = this.data.list.find(x=>x.name===i.name);
                         stock.qty-=i.qty;
@@ -1029,7 +1042,7 @@
                 document.getElementById(type+'-prev').classList.remove('show');
                 document.getElementById('btn-'+type+'-submit').disabled=true;
                 this.renderCart(type); this.refreshDatalists();
-                alert("Success");
+                this.showToast("Batch Submitted!", "success");
             },
 
             openReportCenter: function() { 
