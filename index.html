@@ -489,10 +489,10 @@
     <div id="print-area"></div>
     <script>
         // 配置区域
-        // 更新自：2026-01-31 (Project ID: yviwpkxqrrbvncsyfpqc)
-        const supabaseUrl = 'https://yviwpkxqrrbvncsyfpqc.supabase.co';
-        // ⚠️ 注意：在生产环境中建议配置 RLS 策略以增强安全性
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2aXdwa3hxcnJidm5jc3lmcHFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2MjQyMzEsImV4cCI6MjA4NTIwMDIzMX0.8swOVDG15CdEx-EyrB4JHVrHmUYQ01GG44zw3UQwn1c';
+        // [已修复] 更新自：2026-02-01 (Project ID: jqxdiomkyeojofclpvyq)
+        const supabaseUrl = 'https://jqxdiomkyeojofclpvyq.supabase.co';
+        // [已修复] 使用最新的 Anon Key
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxeGRpb21reWVvam9mY2xwdnlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5MDI5ODAsImV4cCI6MjA4NTQ3ODk4MH0.plc9LeoaOLGowdVIiUUaHMASQf9e0EhaIH7HJvxevF0';
         const _client = supabase.createClient(supabaseUrl, supabaseKey);
 
         const app = {
@@ -528,7 +528,6 @@
                 const el = document.getElementById(id);
                 const val = el.value.trim();
                 if (!val) return;
-
                 // 延迟 600ms 执行，防止 API 滥用
                 this.temp.debounceTimer = setTimeout(async () => {
                     this._performTranslate(id, val);
@@ -548,7 +547,6 @@
                     const langPair = isChinese ? "zh-CN|en" : "en|zh-CN";
                     const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(val)}&langpair=${langPair}`);
                     const data = await response.json();
-                    
                     if(data.responseData && data.responseData.translatedText) {
                         const translation = data.responseData.translatedText;
                         el.value = `${val} (${translation})`;
@@ -561,7 +559,7 @@
                     let trans = this.dictionary[val] || ( /[\u4e00-\u9fa5]/.test(val) ? "Trans_EN" : "Trans_CN" );
                     el.value = `${val} (${trans})`;
                 } finally {
-                    if(icon) icon.className = "fas fa-language"; 
+                    if(icon) icon.className = "fas fa-language";
                 }
             },
 
@@ -599,13 +597,12 @@
                     const el = document.getElementById(id);
                     if(el) el.value = d;
                 });
-
                 // 1. 优先加载本地数据 (LocalStorage) - 保持键名为 kmc_v67
                 let localData = null;
                 const localStr = localStorage.getItem('kmc_v67');
                 if(localStr) {
                     try { 
-                        localData = JSON.parse(localStr); 
+                        localData = JSON.parse(localStr);
                         this.data = localData; 
                         console.log("Loaded Local Data");
                         this.refreshDatalists();
@@ -614,7 +611,6 @@
 
                 // 2. 执行智能同步 (Smart Sync)
                 await this.smartSync(localData);
-
                 // 3. 初始化设置
                 this.checkSettings();
                 this.refreshDatalists();
@@ -637,15 +633,12 @@
                 if(btn) btn.className = "icon-btn sync spinning"; 
                 
                 const local = currentLocalData || this.data;
-
                 try {
                     // 使用 maybeSingle() 避免空数据库报错
                     let { data: cloudRow, error } = await _client.from('kmc_core').select('content').eq('id', 1).maybeSingle();
-                    
                     if (error && error.code !== 'PGRST116') throw error;
                     
                     let cloud = (cloudRow && cloudRow.content) ? cloudRow.content : null;
-
                     if (!cloud) {
                         console.log("Cloud empty, pushing local...");
                         await this.pushToCloud(true);
@@ -660,7 +653,6 @@
                         const cloudTS = this.getLastModified(cloud);
                         
                         console.log(`Sync Check - Local: ${localTS}, Cloud: ${cloudTS}`);
-
                         if (localTS > cloudTS) {
                             console.log("Local is newer. Pushing to Cloud.");
                             this.data = local;
@@ -686,12 +678,10 @@
                     
                     if(btn) btn.className = "icon-btn sync success";
                     setTimeout(() => { if(btn) btn.className = "icon-btn sync"; }, 1000);
-                    
                     if(document.getElementById('modal-report-center').style.display === 'flex') {
                         this.renderReport();
                     }
                     this.refreshDatalists();
-
                 } catch(e) {
                     console.error("Smart Sync Error:", e);
                     if(btn) btn.className = "icon-btn exit"; 
@@ -710,19 +700,19 @@
             },
             
             saveToLocal: function() { 
-                try { localStorage.setItem('kmc_v67', JSON.stringify(this.data)); } catch(e) { alert("Storage Full!"); }
+                try { localStorage.setItem('kmc_v67', JSON.stringify(this.data));
+                } catch(e) { alert("Storage Full!"); }
             },
 
             pushToCloud: async function(silent = false) { 
                 this.saveToLocal();
                 const btn = document.getElementById('cloud-btn');
                 if(!silent && btn) btn.className = "icon-btn sync spinning";
-                
                 try {
                     const { error } = await _client.from('kmc_core').upsert({ id: 1, content: this.data });
                     if(error) throw error;
                     
-                    if(!silent && btn) btn.className = "icon-btn sync success"; 
+                    if(!silent && btn) btn.className = "icon-btn sync success";
                     if(!silent && btn) setTimeout(() => btn.className = "icon-btn sync", 1000); 
                     
                     if(!silent) this.showToast("Saved to Cloud!");
@@ -740,7 +730,7 @@
             },
 
             exportPDF: function() { 
-                const el = document.getElementById('print-area'); 
+                const el = document.getElementById('print-area');
                 let title = "";
                 if (this.temp.curTab === 'in') title = "Inbound Report (入库报表)";
                 else if (this.temp.curTab === 'out') title = "Outbound Report (出库报表)";
@@ -757,7 +747,7 @@
                         p.save('KMC_Report.pdf'); el.innerHTML = '';
                         this.showToast("PDF Downloaded");
                     }); 
-                }, 200); 
+                }, 200);
             },
 
             triggerAdmin: function() {
@@ -801,8 +791,10 @@
                         <td style="text-align:center"><i class="fas fa-trash" style="color:#da3633;cursor:pointer" onclick="app.admDelStock(${realIdx})"></i></td>
                     </tr>`}).join('');
             },
-            admUpdStock: function(i, f, v) { if(f==='qty') v=parseInt(v); this.data.list[i][f]=v; this.pushToCloud(); }, 
-            admDelStock: function(i) { if(confirm("Delete?")) { this.data.list.splice(i,1); this.pushToCloud(); this.admRenderStock(); } },
+            admUpdStock: function(i, f, v) { if(f==='qty') v=parseInt(v); this.data.list[i][f]=v;
+            this.pushToCloud(); }, 
+            admDelStock: function(i) { if(confirm("Delete?")) { this.data.list.splice(i,1);
+            this.pushToCloud(); this.admRenderStock(); } },
             admAddStock: function() {
                 const n=document.getElementById('new-name').value, q=parseInt(document.getElementById('new-qty').value), u=document.getElementById('new-unit').value, l=document.getElementById('new-loc').value;
                 if(n && !isNaN(q)) {
@@ -854,9 +846,12 @@
                 `).join('');
             },
 
-            admRenderLocs: function() { this.renderManager('loc', this.data.settings.locations); },
-            admRenderUnits: function() { this.renderManager('unit', this.data.settings.units); },
-            admRenderDepts: function() { this.renderManager('dept', this.data.settings.depts); },
+            admRenderLocs: function() { this.renderManager('loc', this.data.settings.locations);
+            },
+            admRenderUnits: function() { this.renderManager('unit', this.data.settings.units);
+            },
+            admRenderDepts: function() { this.renderManager('dept', this.data.settings.depts);
+            },
             
             admAddItem: function(type) {
                 const inputId = type === 'dept' ? 'new-dept' : `new-${type}-val`;
@@ -873,9 +868,12 @@
                     el.value='';
                 }
             },
-            admAddLoc: function() { this.admAddItem('loc'); },
-            admAddUnit: function() { this.admAddItem('unit'); },
-            admAddDept: function() { this.admAddItem('dept'); },
+            admAddLoc: function() { this.admAddItem('loc');
+            },
+            admAddUnit: function() { this.admAddItem('unit');
+            },
+            admAddDept: function() { this.admAddItem('dept');
+            },
             
             admDelItem: function(type, i) {
                 if(confirm("Delete?")) {
@@ -918,7 +916,7 @@
                     const diff = newQty - oldQty; 
                     const item = this.data.list.find(x => x.name === log.name);
                     if(item) {
-                        if(log.type === 'IN') item.qty += diff; 
+                        if(log.type === 'IN') item.qty += diff;
                         else item.qty -= diff;
                     }
                     this.data.history[i][f] = parseInt(v);
@@ -927,7 +925,7 @@
                 } else {
                     this.data.history[i][f] = v;
                 }
-                this.pushToCloud(); 
+                this.pushToCloud();
             },
 
             admDelLog: function(i) {
@@ -935,16 +933,22 @@
                     const log = this.data.history[i];
                     const item = this.data.list.find(x => x.name === log.name);
                     if(item) {
-                        if(log.type === 'IN') item.qty -= log.qty; else item.qty += log.qty;
+                        if(log.type === 'IN') item.qty -= log.qty;
+                        else item.qty += log.qty;
                     }
-                    this.data.history.splice(i, 1); this.pushToCloud(); this.admRenderLogs(); 
+                    this.data.history.splice(i, 1);
+                    this.pushToCloud(); this.admRenderLogs(); 
                 }
             },
 
-            toggleRule: function(key, checked) { this.data.settings.constraints[key] = checked; this.pushToCloud(); this.applyRules(); },
-            applyRules: function() { const c = this.data.settings.constraints; for(let k in c) { const s=document.querySelector(`.req-${k}`); if(s) s.style.display = c[k]?'inline':'none'; } },
+            toggleRule: function(key, checked) { this.data.settings.constraints[key] = checked;
+            this.pushToCloud(); this.applyRules(); },
+            applyRules: function() { const c = this.data.settings.constraints;
+            for(let k in c) { const s=document.querySelector(`.req-${k}`); if(s) s.style.display = c[k]?'inline':'none';
+            } },
 
-            roleSwitch: function(val) { document.getElementById('pass-area').style.display = 'block'; }, 
+            roleSwitch: function(val) { document.getElementById('pass-area').style.display = 'block';
+            }, 
 
             login: function() {
                 const r = document.getElementById('login-role').value;
@@ -953,7 +957,6 @@
 
                 if (r === 'admin') targetPass = this.data.settings.adminPass;
                 else targetPass = this.data.settings.keeperPass;
-
                 if (p !== targetPass) return this.showToast('Wrong Password', 'error');
 
                 if (r === 'admin') {
@@ -963,11 +966,9 @@
                 }
                 
                 this.currentUser.role = r;
-                
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('user-badge').innerText = r === 'keeper' ? 'KEEPER' : 'ADMIN';
                 this.refreshDatalists();
-                
                 setTimeout(() => {
                     this.openReportCenter();
                     this.switchTab('stock');
@@ -991,7 +992,6 @@
                 const qty = parseInt(document.getElementById(type+'-qty').value); 
                 const unit = document.getElementById(type+'-unit').value;
                 if(!name || !qty || qty <= 0) return this.showToast("Fill Name & Qty", "error");
-                
                 if(type === 'in') {
                     const loc = document.getElementById('in-loc').value;
                     if(!loc) return this.showToast("Loc required", "error");
@@ -1013,13 +1013,13 @@
                 document.getElementById(type+'-cart-empty').style.display = list.length?'none':'block';
                 if(this.temp.sig && this.temp.signType === type) document.getElementById('btn-'+type+'-submit').disabled = !list.length;
             },
-            delFromCart: function(type, idx) { this.temp.cart[type].splice(idx, 1); this.renderCart(type); },
+            delFromCart: function(type, idx) { this.temp.cart[type].splice(idx, 1);
+            this.renderCart(type); },
             
             submitBatch: function(type) {
                 const list = this.temp.cart[type];
                 if(!list.length || !this.temp.sig) return alert("Cart empty or No Sign");
-                const batchId = Date.now().toString(); 
-                
+                const batchId = Date.now().toString();
                 if(type === 'in') {
                     const h = document.getElementById('in-handler').value, s = document.getElementById('in-source').value;
                     if(this.data.settings.constraints.in_handler && !h) return this.showToast("Handler required", "error");
@@ -1049,12 +1049,14 @@
             openReportCenter: function() { 
                 const modal = document.getElementById('modal-report-center');
                 if(modal) {
-                    modal.style.display = 'flex'; 
+                    modal.style.display = 'flex';
                     this.renderReport();
                 }
             },
-            closeReportCenter: function() { document.getElementById('modal-report-center').style.display = 'none'; },
-            switchTab: function(t) { this.temp.curTab = t; document.querySelectorAll('#modal-report-center .fm-tab').forEach(e=>e.classList.remove('active')); document.getElementById('tab-'+t).classList.add('active'); this.renderReport(); },
+            closeReportCenter: function() { document.getElementById('modal-report-center').style.display = 'none';
+            },
+            switchTab: function(t) { this.temp.curTab = t; document.querySelectorAll('#modal-report-center .fm-tab').forEach(e=>e.classList.remove('active'));
+            document.getElementById('tab-'+t).classList.add('active'); this.renderReport(); },
             
             renderReport: function() {
                 try {
@@ -1065,7 +1067,6 @@
                     } else {
                         const rawData = this.data.history.filter(x => (t==='in'?x.type==='IN':x.type==='OUT'));
                         const groups = {}; rawData.forEach(item => { const gid = item.bid || item.ts; if(!groups[gid]) groups[gid]={meta:item, items:[]}; groups[gid].items.push(item); });
-                        
                         const rows = Object.values(groups).map(g => {
                             const items = g.items.map(i=>`<div class="batch-item-row"><span class="batch-name">${i.name}</span><span class="batch-qty">${i.qty} ${i.unit||''}</span></div>`).join('');
                             return `<tr>
@@ -1077,7 +1078,6 @@
                                 <td>${g.meta.proof?`<img src="${g.meta.proof}" class="sig-thumb">`:''}</td>
                             </tr>`;
                         }).join('');
-                        
                         document.getElementById('rep-table').innerHTML = `<thead><tr><th>Date (日)</th><th>Items (明细)</th><th>${t==='in'?'Loc (位)':'Dept (部)'}</th><th>User (人)</th><th>${t==='in'?'Source (源)':'Usage (途)'}</th><th>Sig (签)</th></tr></thead><tbody>${rows}</tbody>`;
                     }
                 } catch(e) {
@@ -1085,10 +1085,11 @@
                 }
             },
             
-            togglePanel: function(t) { document.querySelectorAll('.panel-box').forEach(b => b.style.display='none'); document.querySelectorAll('.action-card').forEach(c => c.classList.remove('active')); document.getElementById('panel-'+t).style.display='block'; document.getElementById('card-'+t).classList.add('active'); },
+            togglePanel: function(t) { document.querySelectorAll('.panel-box').forEach(b => b.style.display='none');
+            document.querySelectorAll('.action-card').forEach(c => c.classList.remove('active')); document.getElementById('panel-'+t).style.display='block'; document.getElementById('card-'+t).classList.add('active'); },
             
             openSign: function(t) { 
-                this.temp.signType=t; 
+                this.temp.signType=t;
                 document.getElementById('modal-sign').style.display='flex'; 
                 setTimeout(()=>{
                     const c=document.getElementById('sig-canvas');
@@ -1103,9 +1104,10 @@
                     const m=e=>{if(d){const k=p(e);x.lineTo(k.x,k.y);x.stroke()}e.preventDefault()};
                     const n=()=>d=false;
                     c.ontouchstart=s;c.ontouchmove=m;c.ontouchend=n;c.onmousedown=s;c.onmousemove=m;c.onmouseup=n;
-                },200); 
+                },200);
             },
-            closeSign: function() { document.getElementById('modal-sign').style.display='none'; },
+            closeSign: function() { document.getElementById('modal-sign').style.display='none';
+            },
             
             saveSig: function() { 
                 const c=document.getElementById('sig-canvas');
@@ -1119,7 +1121,7 @@
                 document.getElementById(this.temp.signType+'-prev').src=this.temp.sig; 
                 document.getElementById(this.temp.signType+'-prev').classList.add('show'); 
                 document.getElementById('modal-sign').style.display='none'; 
-                this.renderCart(this.temp.signType); 
+                this.renderCart(this.temp.signType);
             },
             
             clearSig: function() { 
@@ -1150,7 +1152,7 @@
                     document.getElementById('stock-hint').innerHTML = `Stock: ${i.qty}`;
                     const unitSel = document.getElementById('out-unit');
                     document.getElementById('out-unit').value = i.unit;
-                    document.getElementById('out-qty').max = i.qty; 
+                    document.getElementById('out-qty').max = i.qty;
                 }
             },
             
@@ -1158,7 +1160,6 @@
                 const d = this.data.settings.depts || [];
                 const l = this.data.settings.locations || [];
                 const u = this.data.settings.units || [];
-                
                 const makeOpts = (arr) => `<option value="">Select...</option>` + arr.map(x=>`<option value="${x}">${x}</option>`).join('');
                 
                 if(document.getElementById('in-loc')) document.getElementById('in-loc').innerHTML = makeOpts(l);
@@ -1171,8 +1172,10 @@
                 document.getElementById('dl-receivers').innerHTML=[...new Set(this.data.history.filter(x=>x.type==='OUT').map(x=>x.receiver))].map(x=>`<option value="${x}">`).join('');
             },
             
-            resetData: function() { if(confirm("RESET ALL DATA?")) { this.data.list=[]; this.data.history=[]; this.saveToLocal(); this.pushToCloud(); location.reload(); } },
-            exportExcel: function() { const wb=XLSX.utils.book_new(), ws=XLSX.utils.table_to_sheet(document.getElementById('rep-table')); XLSX.utils.book_append_sheet(wb,ws,"Report"); XLSX.writeFile(wb,"KMC_Report.xlsx"); }
+            resetData: function() { if(confirm("RESET ALL DATA?")) { this.data.list=[];
+            this.data.history=[]; this.saveToLocal(); this.pushToCloud(); location.reload(); } },
+            exportExcel: function() { const wb=XLSX.utils.book_new(), ws=XLSX.utils.table_to_sheet(document.getElementById('rep-table'));
+            XLSX.utils.book_append_sheet(wb,ws,"Report"); XLSX.writeFile(wb,"KMC_Report.xlsx"); }
         };
         window.onload = () => app.init();
     </script>
