@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KMC后勤物资 (Smart Sync v3.3 Final Fixed)</title>
+    <title>KMC后勤物资 (Smart Sync v3.4 Auto-Sort)</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
-        /* KMC V21.0 - Dark Theme CSS (已内置，防止样式丢失) */
+        /* KMC V21.0 - Dark Theme CSS */
         :root { --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9; --text-muted: #8b949e; --primary: #58a6ff; --btn-green: #238636; --danger: #da3633; --in: #238636; --out: #1f6feb; }
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; font-size: 13px; }
@@ -118,7 +118,7 @@
         <div style="background: var(--panel); padding:30px; width:300px; border-radius:12px; text-align:center;">
             <div style="font-size:36px; margin-bottom:12px;"><i class="fas fa-cubes" style="color:var(--text)"></i></div>
             <h2 style="margin:0 0 5px 0; color:var(--text)">KMC后勤物资</h2>
-            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Smart Sync V3.3)</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Smart Sync V3.4)</p>
             <div style="text-align:left; margin-bottom:15px;">
                 <label class="label">Role (身份)</label>
                 <select id="login-role" class="select" onchange="app.roleSwitch(this.value)">
@@ -867,7 +867,7 @@
                 }
             },
 
-            // [核心功能验证] Admin Logs 渲染逻辑 - 包含新增的 Note 列
+            // [核心修改] Admin Logs 渲染逻辑 - 包含新增的 Note 列和自动排序
             admRenderLogs: function() {
                 const type = document.getElementById('adm-log-type').value;
                 const search = document.getElementById('adm-log-search').value.toLowerCase();
@@ -906,6 +906,9 @@
                     this.data.history[i][f] = parseInt(v);
                 } else if (f === 'ts') {
                     this.data.history[i][f] = new Date(v).getTime();
+                    // [新增] 自动重新排序
+                    this.data.history.sort((a, b) => b.ts - a.ts);
+                    this.admRenderLogs();
                 } else {
                     this.data.history[i][f] = v;
                 }
