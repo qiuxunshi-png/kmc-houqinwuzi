@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KMC后勤物资 (Smart Sync v3.5 Strict Sort)</title>
+    <title>KMC后勤物资 (Smart Sync v3.6 Sorted)</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -118,7 +118,7 @@
         <div style="background: var(--panel); padding:30px; width:300px; border-radius:12px; text-align:center;">
             <div style="font-size:36px; margin-bottom:12px;"><i class="fas fa-cubes" style="color:var(--text)"></i></div>
             <h2 style="margin:0 0 5px 0; color:var(--text)">KMC后勤物资</h2>
-            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Smart Sync V3.5)</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">KMC Logistics (Smart Sync V3.6)</p>
             <div style="text-align:left; margin-bottom:15px;">
                 <label class="label">Role (身份)</label>
                 <select id="login-role" class="select" onchange="app.roleSwitch(this.value)">
@@ -867,21 +867,22 @@
                 }
             },
 
-            // [核心修改]：1. 增加了 Note 列； 2. 增加了 sort((a, b) => b.ts - a.ts) 强制倒序排列
+            // [FIXED] Admin Logs Rendering: FORCE SORT by Date
             admRenderLogs: function() {
                 const type = document.getElementById('adm-log-type').value;
                 const search = document.getElementById('adm-log-search').value.toLowerCase();
                 
-                // 先过滤，后排序
+                // 1. First Filter
                 let filtered = this.data.history.filter(h => {
                     const matchType = (type === 'ALL') || (h.type === type);
                     const matchText = (h.name||'').toLowerCase().includes(search);
                     return matchType && matchText;
                 });
 
-                // 强制按时间戳倒序排列（最新在前）
+                // 2. CRITICAL FIX: Force sort by date descending (Newest First) every time we render
                 filtered.sort((a, b) => b.ts - a.ts);
 
+                // 3. Render HTML
                 document.getElementById('adm-logs-list').innerHTML = filtered.map((h, i) => `
                     <tr>
                         <td><input type="date" value="${new Date(h.ts).toISOString().split('T')[0]}" onchange="app.admUpdLog(${this.data.history.indexOf(h)}, 'ts', this.value)" style="width:90px; background:transparent; border:none; color:white; font-size:10px;"></td>
@@ -910,7 +911,7 @@
                     this.data.history[i][f] = parseInt(v);
                 } else if (f === 'ts') {
                     this.data.history[i][f] = new Date(v).getTime();
-                    // 修改日期后，立即重新渲染以更新排序
+                    // Re-render to reflect new order immediately
                     this.admRenderLogs();
                 } else {
                     this.data.history[i][f] = v;
