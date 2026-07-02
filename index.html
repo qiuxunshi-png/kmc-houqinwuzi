@@ -688,9 +688,42 @@ const app = {
         this.showToast("正在生成PDF...");
         setTimeout(() => {
             html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff',scrollY:0}).then(c => {
-                const p = new window.jspdf.jsPDF('p','mm','a4');
-                p.addImage(c.toDataURL('image/jpeg',0.9),'JPEG',10,10,190,(c.height*190)/c.width);
-                p.save('KMC_Report.pdf'); el.innerHTML=''; this.showToast("PDF已下载");
+                const pdf = new window.jspdf.jsPDF('p','mm','a4');
+                const pageWidth = 210;  // A4 width in mm
+                const pageHeight = 297; // A4 height in mm
+                const marginX = 10;     // left/right margin
+                const marginY = 10;     // top/bottom margin
+                const contentWidth = pageWidth - marginX * 2;  // 190mm
+                const contentHeight = pageHeight - marginY * 2; // 277mm
+
+                // How many pixels of the image fit on one page
+                const pxPerMm = c.width / contentWidth;
+                const pageImgHeight = contentHeight * pxPerMm;
+
+                const totalPages = Math.ceil(c.height / pageImgHeight);
+                const imgData = c.toDataURL('image/jpeg', 0.9);
+
+                for (let i = 0; i < totalPages; i++) {
+                    if (i > 0) pdf.addPage();
+
+                    const sy = i * pageImgHeight;
+                    const sHeight = Math.min(pageImgHeight, c.height - sy);
+                    const pageCanvas = document.createElement('canvas');
+                    pageCanvas.width = c.width;
+                    pageCanvas.height = sHeight;
+                    const ctx = pageCanvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+                    ctx.drawImage(c, 0, sy, c.width, sHeight, 0, 0, c.width, sHeight);
+
+                    const sliceData = totalPages > 1 ? pageCanvas.toDataURL('image/jpeg', 0.9) : imgData;
+                    pdf.addImage(sliceData, 'JPEG', marginX, marginY, contentWidth, sHeight / pxPerMm);
+                }
+
+                pdf.save('KMC_Report.pdf');
+                el.innerHTML = '';
+                const pageText = totalPages > 1 ? ' (' + totalPages + '页)' : '';
+                this.showToast("PDF已下载" + pageText);
             });
         },200);
     },
