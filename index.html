@@ -166,12 +166,13 @@
 </div>
 
 <header class="header">
-  <div class="brand" onclick="app.triggerAdmin()" title="Tap 7 times for God Mode">
+  <div class="brand">
     <i class="fas fa-cube"></i> KMC
     <span class="brand-badge" id="user-badge"></span>
   </div>
   <div class="header-actions">
     <div class="icon-btn sync" id="cloud-btn" onclick="app.manualSync()" title="Smart Sync (智能同步)"><i class="fas fa-cloud"></i></div>
+    <div class="icon-btn hidden" id="admin-panel-btn" onclick="app.openAdminUltimate()" title="Admin Panel (管理面板)"><i class="fas fa-cog"></i></div>
     <div class="icon-btn exit" onclick="location.reload()" title="Logout (退出)"><i class="fas fa-sign-out-alt"></i></div>
   </div>
 </header>
@@ -308,7 +309,7 @@
 
 <div id="modal-admin-ultimate" class="full-modal">
   <div class="fm-header" style="background:var(--bg-raised);">
-    <div><h3 style="margin:0;font-size:16px;">Admin Center</h3><span style="font-size:10px;opacity:0.6;font-family:var(--font-mono);">God Mode (上帝权限)</span></div>
+    <div><h3 style="margin:0;font-size:16px;">Admin Center</h3><span style="font-size:10px;opacity:0.6;font-family:var(--font-mono);">Admin Panel (管理权限)</span></div>
     <div style="display:flex;gap:10px;align-items:center;">
       <button class="btn btn-success" style="height:32px;padding:0 14px;font-size:12px;width:auto;" onclick="app.adminManualSave()"><i class="fas fa-save"></i> Save</button>
       <div class="icon-btn" onclick="document.getElementById('modal-admin-ultimate').style.display='none'" style="border:none;"><i class="fas fa-times"></i></div>
@@ -385,7 +386,7 @@
         <div>
           <div class="section-label">Security (安全)</div>
           <div class="settings-block"><label class="label">Change Admin Password (修改管理员密码)</label><div style="display:flex;gap:10px;"><input id="new-pass-admin" class="input" placeholder="New Password" autocomplete="off"><button class="btn btn-primary" style="width:auto;padding:0 16px;" onclick="app.changePassword('admin')">Update</button></div></div>
-          <div class="settings-block"><label class="label">Change God Password (修改上帝密码)</label><div style="display:flex;gap:10px;"><input id="new-pass-god" class="input" placeholder="New God Password" autocomplete="off"><button class="btn btn-danger" style="width:auto;padding:0 16px;" onclick="app.changePassword('god')">Update</button></div></div>
+          <div class="settings-block" style="display:none"><label class="label">Change God Password (修改上帝密码)</label><div style="display:flex;gap:10px;"><input id="new-pass-god" class="input" placeholder="New God Password" autocomplete="off"><button class="btn btn-danger" style="width:auto;padding:0 16px;" onclick="app.changePassword('god')">Update</button></div></div>
         </div>
         <div style="margin-top:16px;"><div class="section-label danger">Danger Zone (危险区)</div><button class="btn btn-danger" onclick="app.resetData()"><i class="fas fa-exclamation-triangle"></i> Reset All Data (清空所有数据)</button></div>
       </div>
@@ -763,10 +764,10 @@ const app = {
         document.getElementById('adm-stock-list').innerHTML=filtered.map(item=>{
             const ri=this.data.list.indexOf(item);
             return `<tr>
-                <td><input class="adm-input" value="${escapeHTML(item.name)}" onchange="app.admUpdStock(${ri},'name',this.value)" style="text-align:left"></td>
-                <td><input class="adm-input" type="number" value="${item.qty}" onchange="app.admUpdStock(${ri},'qty',this.value)"></td>
-                <td><input class="adm-input" value="${escapeHTML(item.unit)}" onchange="app.admUpdStock(${ri},'unit',this.value)"></td>
-                <td><input class="adm-input" value="${escapeHTML(item.loc)}" onchange="app.admUpdStock(${ri},'loc',this.value)"></td>
+                <td style="text-align:left;padding-left:8px;">${escapeHTML(item.name)}</td>
+                <td style="font-family:var(--font-mono);">${item.qty}</td>
+                <td>${escapeHTML(item.unit)}</td>
+                <td>${escapeHTML(item.loc)}</td>
                 <td style="text-align:center"><i class="fas fa-trash del-btn" onclick="app.admDelStock(${ri})"></i></td>
             </tr>`;
         }).join('');
@@ -793,12 +794,12 @@ const app = {
         document.getElementById('adm-logs-list').innerHTML=indexed.map(({h,origIdx})=>{
             const ldf=h.type==='IN'?'loc':'dept';
             return `<tr>
-                <td><input type="date" value="${new Date(h.ts).toISOString().split('T')[0]}" onchange="app.admUpdLog(${origIdx},'ts',this.value)" style="width:100px;background:transparent;border:1px solid transparent;color:var(--text);font-size:11px;font-family:var(--font-mono);border-radius:4px;padding:4px;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'"></td>
+                <td style="font-family:var(--font-mono);font-size:11px;">${new Date(h.ts).toLocaleDateString()}</td>
                 <td><span style="font-size:10px;padding:3px 8px;border-radius:4px;font-weight:600;background:${h.type==='IN'?'rgba(52,199,123,0.12)':'rgba(91,138,245,0.12)'};color:${h.type==='IN'?'var(--green)':'var(--accent)'}">${h.type}</span></td>
-                <td><input class="adm-input" value="${escapeHTML(h.name)}" onchange="app.admUpdLog(${origIdx},'name',this.value)"></td>
-                <td><input class="adm-input" type="number" value="${h.qty}" onchange="app.admUpdLog(${origIdx},'qty',this.value)" style="width:50px"></td>
-                <td><input class="adm-input" value="${escapeHTML(h[ldf]||'')}" onchange="app.admUpdLog(${origIdx},'${ldf}',this.value)"></td>
-                <td><input class="adm-input" value="${escapeHTML(h.remark||'')}" onchange="app.admUpdLog(${origIdx},'remark',this.value)"></td>
+                <td style="text-align:left;padding-left:8px;">${escapeHTML(h.name)}</td>
+                <td style="font-family:var(--font-mono);">${h.qty}</td>
+                <td>${escapeHTML(h[ldf]||'')}</td>
+                <td>${escapeHTML(h.remark||'')}</td>
                 <td>${h.proof?`<img src="${h.proof}" class="sig-thumb">`:'<span style="color:var(--text-muted)">-</span>'}</td>
                 <td style="text-align:center"><i class="fas fa-trash del-btn" onclick="app.admDelLog(${origIdx})"></i></td>
             </tr>`;
@@ -899,6 +900,7 @@ const app = {
         this.currentUser.role=r;
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('user-badge').innerText=r==='keeper'?'KEEPER':'ADMIN';
+        if (r==='admin') { document.getElementById('admin-panel-btn').classList.remove('hidden'); }
         this.refreshDatalists();
         setTimeout(()=>{ this.openReportCenter(); this.switchTab('stock'); },300);
     },
