@@ -153,6 +153,7 @@
       <select id="login-role" class="select" onchange="app.roleSwitch(this.value)">
         <option value="keeper">Warehouse Keeper (库管员)</option>
         <option value="admin">Admin (管理员)</option>
+        <option value="god" style="display:none" id="role-god-opt">God Mode (上帝模式)</option>
       </select>
     </div>
     <div id="pass-area" style="text-align:left;margin-bottom:24px;">
@@ -166,7 +167,7 @@
 </div>
 
 <header class="header">
-  <div class="brand">
+  <div class="brand" onclick="app.triggerAdmin()" style="cursor:pointer">
     <i class="fas fa-cube"></i> KMC
     <span class="brand-badge" id="user-badge"></span>
   </div>
@@ -341,7 +342,8 @@
         </div>
       </div>
       <div class="admin-scroll-content">
-        <table class="report-table" style="width:100%"><thead><tr><th>Name (名称)</th><th>Qty (数)</th><th>Unit (单)</th><th>Loc (位)</th><th>Act (操)</th></tr></thead><tbody id="adm-stock-list"></tbody></table>
+        <div style="margin-bottom:8px;"><button class="btn btn-primary" style="width:auto;padding:0 12px;" onclick="app.godEditSelected()"><i class="fas fa-edit"></i> Batch Edit (批量修改)</button></div>
+        <table class="report-table" style="width:100%"><thead><tr><th style="width:30px"><input type="checkbox" onchange="document.querySelectorAll('.god-edit-cb').forEach(cb=>cb.checked=this.checked)"></th><th>Name (名称)</th><th>Qty (数)</th><th>Unit (单)</th><th>Loc (位)</th><th>Act (操)</th></tr></thead><tbody id="adm-stock-list"></tbody></table>
       </div>
     </div>
     <div id="adm-area-logs" class="panel-box" style="display:none;">
@@ -386,7 +388,7 @@
         <div>
           <div class="section-label">Security (安全)</div>
           <div class="settings-block"><label class="label">Change Admin Password (修改管理员密码)</label><div style="display:flex;gap:10px;"><input id="new-pass-admin" class="input" placeholder="New Password" autocomplete="off"><button class="btn btn-primary" style="width:auto;padding:0 16px;" onclick="app.changePassword('admin')">Update</button></div></div>
-          <div class="settings-block" style="display:none"><label class="label">Change God Password (修改上帝密码)</label><div style="display:flex;gap:10px;"><input id="new-pass-god" class="input" placeholder="New God Password" autocomplete="off"><button class="btn btn-danger" style="width:auto;padding:0 16px;" onclick="app.changePassword('god')">Update</button></div></div>
+          <div class="settings-block" id="god-pass-block" style="display:none"><label class="label">Change God Password (修改上帝密码)</label><div style="display:flex;gap:10px;"><input id="new-pass-god" class="input" placeholder="New God Password" autocomplete="off"><button class="btn btn-danger" style="width:auto;padding:0 16px;" onclick="app.changePassword('god')">Update</button></div></div>
         </div>
         <div style="margin-top:16px;"><div class="section-label danger">Danger Zone (危险区)</div><button class="btn btn-danger" onclick="app.resetData()"><i class="fas fa-exclamation-triangle"></i> Reset All Data (清空所有数据)</button></div>
       </div>
@@ -403,6 +405,20 @@
       <button class="btn btn-ghost" style="flex:1;" onclick="app.closeSign()">Cancel (取消)</button>
       <button class="btn btn-ghost" style="flex:1;" onclick="app.clearSig()"><i class="fas fa-eraser"></i> Clear (清除)</button>
       <button class="btn btn-primary" style="flex:2;" onclick="app.saveSig()"><i class="fas fa-check"></i> Confirm (确认)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-god-edit">
+  <div class="modal-box" style="max-width:90%; width:400px;">
+    <h3 style="margin-bottom:12px;"><i class="fas fa-edit"></i> Edit Stock (修改物资)</h3>
+    <div id="god-edit-list" style="max-height: 60vh; overflow-y: auto; margin-bottom: 12px;"></div>
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom: 12px; line-height: 1.4;">
+       Remind: A log record will be generated for these modifications. (同步提醒：将生成对应的修改记录，必须确认后才能生效)
+    </div>
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('modal-god-edit').style.display='none'">Cancel (取消)</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="app.godEditConfirm()"><i class="fas fa-check"></i> Confirm (确认修改)</button>
     </div>
   </div>
 </div>
@@ -734,8 +750,10 @@ const app = {
         this.temp.adminClicks++;
         if (this.temp.adminClicks===7) {
             this.temp.adminClicks = 0;
-            if (prompt("Admin Password (God Mode):")===this.data.settings.godPass) this.openAdminUltimate();
-            else this.showToast("Access Denied","error");
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('role-god-opt').style.display = 'block';
+            document.getElementById('login-role').value = 'god';
+            app.roleSwitch('god');
         }
         this.temp.adminTimer = setTimeout(()=>this.temp.adminClicks=0, 2000);
     },
@@ -745,6 +763,11 @@ const app = {
         this.switchAdminTab('stock');
         const c = this.data.settings.constraints;
         for (let k in c) { const sw=document.getElementById('sw-'+k); if(sw) sw.checked=c[k]; }
+        if (this.currentUser.role === 'god') {
+            document.getElementById('god-pass-block').style.display = 'block';
+        } else {
+            document.getElementById('god-pass-block').style.display = 'none';
+        }
     },
 
     switchAdminTab: function(t) {
@@ -764,13 +787,88 @@ const app = {
         document.getElementById('adm-stock-list').innerHTML=filtered.map(item=>{
             const ri=this.data.list.indexOf(item);
             return `<tr>
+                <td><input type="checkbox" class="god-edit-cb" value="${ri}"></td>
                 <td style="text-align:left;padding-left:8px;">${escapeHTML(item.name)}</td>
                 <td style="font-family:var(--font-mono);">${item.qty}</td>
                 <td>${escapeHTML(item.unit)}</td>
                 <td>${escapeHTML(item.loc)}</td>
-                <td style="text-align:center"><i class="fas fa-trash del-btn" onclick="app.admDelStock(${ri})"></i></td>
+                <td style="text-align:center">
+                    <i class="fas fa-edit" style="color:var(--accent);margin-right:8px;cursor:pointer" onclick="app.godEditOpen([${ri}])"></i>
+                    <i class="fas fa-trash del-btn" onclick="app.admDelStock(${ri})"></i>
+                </td>
             </tr>`;
         }).join('');
+    },
+
+    godEditSelected: function() {
+        const cbs = document.querySelectorAll('.god-edit-cb:checked');
+        const indices = Array.from(cbs).map(cb => parseInt(cb.value));
+        this.godEditOpen(indices);
+    },
+
+    godEditOpen: function(indices) {
+        if(!indices || indices.length===0) return alert("Please select items first. (请先选择物资)");
+        this.temp.godEditIndices = indices;
+        let html = '';
+        indices.forEach(ri => {
+            const item = this.data.list[ri];
+            html += `<div style="display:flex;align-items:center;margin-bottom:8px;background:var(--bg);padding:8px;border-radius:4px;border:1px solid var(--border);">
+                <div style="flex:1;font-size:13px;">${escapeHTML(item.name)}</div>
+                <div style="width:120px;display:flex;align-items:center;justify-content:flex-end;">
+                    <input type="number" id="god-edit-qty-${ri}" class="input" style="height:30px;width:70px;font-size:13px;padding:0 4px;text-align:center;" value="${item.qty}">
+                    <span style="font-size:12px;margin-left:8px;color:var(--text-dim);width:30px;text-align:left;">${escapeHTML(item.unit)}</span>
+                </div>
+            </div>`;
+        });
+        document.getElementById('god-edit-list').innerHTML = html;
+        document.getElementById('modal-god-edit').style.display = 'flex';
+    },
+
+    godEditConfirm: function() {
+        const indices = this.temp.godEditIndices;
+        let changes = [];
+        for(let ri of indices) {
+            const item = this.data.list[ri];
+            const newQty = parseInt(document.getElementById(`god-edit-qty-${ri}`).value);
+            if(!isNaN(newQty) && newQty !== item.qty) {
+                changes.push({ri, item, old: item.qty, newQty});
+            }
+        }
+        if(changes.length === 0) {
+            document.getElementById('modal-god-edit').style.display = 'none';
+            return;
+        }
+        
+        let msg = "Confirm these changes? (确认提交以下修改？)\n\n";
+        changes.forEach(c => {
+            msg += `${c.item.name}: ${c.old} -> ${c.newQty}\n`;
+        });
+        
+        if(confirm(msg)) {
+            changes.forEach(c => {
+                c.item.qty = c.newQty;
+                const diff = c.newQty - c.old;
+                if(diff !== 0) {
+                    this.data.history.unshift({
+                        ts: Date.now(),
+                        type: diff > 0 ? 'IN' : 'OUT',
+                        name: c.item.name,
+                        qty: Math.abs(diff),
+                        unit: c.item.unit,
+                        loc: c.item.loc,
+                        remark: 'God Mode Edit (上帝模式修改)'
+                    });
+                }
+            });
+            this.pushToCloud();
+            this.admRenderStock();
+            this.admRenderLogs();
+            document.getElementById('modal-god-edit').style.display = 'none';
+            this.showToast("Data modified successfully");
+            document.querySelectorAll('.god-edit-cb').forEach(cb=>cb.checked=false);
+            const headCb = document.querySelector('th input[type="checkbox"]');
+            if (headCb) headCb.checked = false;
+        }
     },
 
     admUpdStock: function(i,f,v) { if(f==='qty') v=parseInt(v); this.data.list[i][f]=v; this.pushToCloud(); },
@@ -894,15 +992,19 @@ const app = {
     login: function() {
         const r=document.getElementById('login-role').value;
         const p=document.getElementById('login-pass').value;
-        const target=r==='admin'?this.data.settings.adminPass:this.data.settings.keeperPass;
+        const target=r==='admin'?this.data.settings.adminPass:r==='god'?this.data.settings.godPass:this.data.settings.keeperPass;
         if (p!==target) return this.showToast('Wrong Password','error');
-        document.getElementById('card-rules').style.display=r==='admin'?'block':'none';
+        document.getElementById('card-rules').style.display=(r==='admin'||r==='god')?'block':'none';
         this.currentUser.role=r;
         document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('user-badge').innerText=r==='keeper'?'KEEPER':'ADMIN';
-        if (r==='admin') { document.getElementById('admin-panel-btn').classList.remove('hidden'); }
-        this.refreshDatalists();
-        setTimeout(()=>{ this.openReportCenter(); this.switchTab('stock'); },300);
+        document.getElementById('user-badge').innerText=r==='keeper'?'KEEPER':r==='god'?'GOD':'ADMIN';
+        if (r==='admin' || r==='god') { document.getElementById('admin-panel-btn').classList.remove('hidden'); }
+        if (r==='god') {
+            this.openAdminUltimate();
+        } else {
+            this.refreshDatalists();
+            setTimeout(()=>{ this.openReportCenter(); this.switchTab('stock'); },300);
+        }
     },
 
     changePassword: function(role) {
